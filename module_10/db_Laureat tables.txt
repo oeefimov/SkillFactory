@@ -1,0 +1,224 @@
+/*
+Пояснения по выбору структуры (см. рис. "Laureat")
+
+Данная структура предназначена для экономного варианта хранения данных, при котором
+могут понадобиться только сведения о самих лауреатах и значимые сведения о городах и странах,
+повлиявших на рождение/обучение/работу лауреата. 
+Такие же сведения как например, сведения о валюте страны или ее международном двух- или трех-буквенном обозначении 
+или о телефонном коде для анализа нобелевской премии не нужны. В связи с этим в таблицы включена 
+не вся информация из исходных датасетов. Вычисляемые данные и не относящиеся к премии данные в структуру не включены.
+
+В таблицах с городами, странами и организациями добавлены ссылки на сами эти таблицы. 
+Это нужно для того, чтобы организовать иерархию данных объектов в истории.
+Некоторые города и страны со временем изменили названия либо отошли к другому государству (например,
+был Кенигсберг в Пруссии, стал Калининград в России). 
+В таблицы предполагается внести и старое и новое название в виде отдельных строк, при этом таблица-факт
+с лауреатами будет ссылаться только на одну из этих строк (на текущее название), а старое название
+можно будет получить по полю parent_id.
+
+Некоторые лауреаты работали одновременно в нескольких интститутах. Для учета этого факта
+была добавлена таблица-связка персон с организациями.
+
+Общественная организация, явившаяся лауреатом премии, и научная организация, в которой
+работал индивидуальный лауреат, имеют совпадающие признаки. В данной структуре они 
+выделены в отдельную таблицу для компактности структуры данных.
+
+Лауреаты-организации и лауреаты-персоны выделены в разные таблицы, так как у них различается
+состав признаков. Связь с таблицей-фактом будет идти по двум признакам примерно так:
+laureat1 join society1 on society1.laureat_id=laureat1.laureat_id and isOrganisation=1 
+
+Необходимость тех или иных признаков зависит от поставленной перед BI-аналитиком задачей. 
+В предложенной структуре учитывается лишь тот спектр задач, который относится 
+непосредственно к премии и условиям ее получения. 
+
+*/
+
+CREATE TABLE public."Category"
+(
+    category_id integer NOT NULL,
+    name character varying(100) NOT NULL,
+    CONSTRAINT "Category_pkey" PRIMARY KEY (category_id)
+)
+
+
+CREATE TABLE public."Prize"
+(
+    prize_id integer NOT NULL,
+    name character varying(1000) NOT NULL,
+    CONSTRAINT prize_pkey PRIMARY KEY (prize_id)
+)
+
+
+CREATE TABLE public."Continent"
+(
+    continent_id integer NOT NULL,
+    name character varying(100) NOT NULL,
+    CONSTRAINT continent_pkey PRIMARY KEY (continent_id)
+)
+
+
+CREATE TABLE public."Country"
+(
+    country_id integer NOT NULL,
+    name character varying(1000) NOT NULL,
+    continent_id integer,
+    population integer,
+    area numeric(15,2),
+    dencity numeric(9,2),
+    coastline numeric(15,2),
+    migration numeric(6,2),
+    infant_mortality numeric(6,2),
+    gdp money,
+    literacy numeric(6,2),
+    phones numeric(6,2),
+    climate numeric(2,1),
+    birth_rate numeric(6,2),
+    death_rate numeric(6,2),
+    agriculture numeric(5,2),
+    industry numeric(5,2),
+    parent_id integer,
+    CONSTRAINT country_pkey PRIMARY KEY (country_id),
+    CONSTRAINT "FK_country_continent" FOREIGN KEY (country_id)
+        REFERENCES public."Continent" (continent_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION
+        NOT VALID,
+    CONSTRAINT "FK_country_parent" FOREIGN KEY (parent_id)
+        REFERENCES public."Country" (country_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION
+)
+
+
+CREATE TABLE public."City"
+(
+    city_id integer NOT NULL,
+    name character varying NOT NULL,
+    population integer,
+    latitude numeric(5,2),
+    longitude numeric(5,2),
+    country_id integer,
+    parent_id integer,
+    CONSTRAINT city_pkey PRIMARY KEY (city_id),
+    CONSTRAINT "FK_city_country" FOREIGN KEY (country_id)
+        REFERENCES public."Country" (country_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION
+        NOT VALID,
+    CONSTRAINT "FK_city_parent" FOREIGN KEY (parent_id)
+        REFERENCES public."City" (city_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION
+        NOT VALID
+)
+
+
+CREATE TABLE public."Person"
+(
+    laureat_id integer NOT NULL,
+    name character varying(1000) NOT NULL,
+    birth_date date,
+    birth_city_id integer,
+    death_date date,
+    death_city_id integer,
+    "isMale" boolean NOT NULL,
+    CONSTRAINT person_pkey PRIMARY KEY (laureat_id),
+    CONSTRAINT "FK_person_birth_city" FOREIGN KEY (birth_city_id)
+        REFERENCES public."City" (city_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION,
+    CONSTRAINT "FK_person_death_city" FOREIGN KEY (death_city_id)
+        REFERENCES public."City" (city_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION
+)
+
+
+CREATE TABLE public."Org_name"
+(
+    org_name_id integer NOT NULL,
+    name character varying(1000) NOT NULL,
+    name_eng character varying(1000),
+    name_abbr character varying(100),
+    CONSTRAINT org_name_pkey PRIMARY KEY (org_name_id)
+)
+
+
+CREATE TABLE public."Society"
+(
+    laureat_id integer NOT NULL,
+    org_name_id integer NOT NULL,
+    CONSTRAINT society_pkey PRIMARY KEY (laureat_id),
+    CONSTRAINT "FK_society_name" FOREIGN KEY (org_name_id)
+        REFERENCES public."Org_name" (org_name_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION
+        NOT VALID
+)
+
+
+CREATE TABLE public."Organization"
+(
+    org_id integer NOT NULL,
+    city_id integer NOT NULL,
+    parent_id integer,
+    org_name_id integer NOT NULL,
+    CONSTRAINT organization_pkey PRIMARY KEY (org_id),
+    CONSTRAINT "FK_organization_city" FOREIGN KEY (city_id)
+        REFERENCES public."City" (city_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION,
+    CONSTRAINT "FK_organization_name" FOREIGN KEY (org_name_id)
+        REFERENCES public."Org_name" (org_name_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION
+        NOT VALID,
+    CONSTRAINT "FK_organization_parent" FOREIGN KEY (parent_id)
+        REFERENCES public."Organization" (org_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION
+)
+
+
+CREATE TABLE public."Org_person"
+(
+    person_id integer NOT NULL,
+    org_id integer NOT NULL,
+    CONSTRAINT org_person_pkey PRIMARY KEY (person_id, org_id),
+    CONSTRAINT "FK_orgperson_organization" FOREIGN KEY (org_id)
+        REFERENCES public."Organization" (org_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION,
+    CONSTRAINT "FK_orgperson_person" FOREIGN KEY (person_id)
+        REFERENCES public."Person" (laureat_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION
+)
+
+
+CREATE TABLE public."Laureat"
+(
+    laureat_id integer NOT NULL,
+    year integer NOT NULL,
+    category_id integer NOT NULL,
+    prize_id integer NOT NULL,
+    motivation character varying(2000) NOT NULL,
+    "isOrganisation" boolean NOT NULL,
+    CONSTRAINT laureat_pkey PRIMARY KEY (laureat_id),
+    CONSTRAINT "FK_laureat_category" FOREIGN KEY (category_id)
+        REFERENCES public."Category" (category_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION,
+    CONSTRAINT "FK_laureat_person" FOREIGN KEY (laureat_id)
+        REFERENCES public."Person" (laureat_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION,
+    CONSTRAINT "FK_laureat_prize" FOREIGN KEY (prize_id)
+        REFERENCES public."Prize" (prize_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION,
+    CONSTRAINT "FK_laureat_society" FOREIGN KEY (laureat_id)
+        REFERENCES public."Society" (laureat_id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION
+)
